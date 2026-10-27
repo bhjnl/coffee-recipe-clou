@@ -1,0 +1,22 @@
+import express from "express";
+import { generateRecipe, validateRecipeInput } from "./src/recipe-engine.js";
+import { searchPublicRecipes } from "./src/sources.js";
+const app = express();
+app.disable("x-powered-by");
+app.use(express.json({limit:"256kb"}));
+const PORT = Number(process.env.PORT || 10000);
+const origins = (process.env.ALLOWED_ORIGINS || "*").split(",").map(x=>x.trim());
+app.use((req,res,next)=>{
+  const origin=req.headers.origin;
+  if(origins.includes("*") || (origin && origins.includes(origin))) res.setHeader("Access-Control-Allow-Origin", origins.includes("*") ? "*" : origin);
+  res.setHeader("Vary","Origin"); res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers","Content-Type, Authorization");
+  if(req.method==="OPTIONS") return res.sendStatus(204); next();
+});
+app.get("/",(_req,res)=>res.json({name:"咖啡豆图鉴智能冲煮 API",status:"ok",bluetooth:false,machineControl:false,endpoints:["/health","/api/recipe","/api/sources","/api/recipes/search"]}));
+app.get("/health",(_req,res)=>res.json({status:"ok",service:"coffee-recipe-cloud",version:"1.0.0",bluetooth:false,machineControl:false}));
+app.post("/api/recipe",(req,res)=>{const errors=validateRecipeInput(req.body||{});if(errors.length)return res.status(400).json({ok:false,errors});res.json({ok:true,recipe:generateRecipe(req.body),disclaimer:"这是可调整的起始方案，不保证为特定批次咖啡豆的最优解。请根据实际流速与杯测反馈调整。"});});
+app.get("/api/sources",(_req,res)=>res.json({ok:true,message:"仅提供来源适配器框架，尚未连接外部配方网站或 API。",sources:[{id:"manual",name:"用户手动录入",status:"available"},{id:"public-api",name:"经许可的公开 API",status:"not-configured"},{id:"public-web",name:"公开网页",status:"not-configured",note:"接入前确认网站条款、robots 规则和数据许可。"}]}));
+app.get("/api/recipes/search",(req,res)=>{const q=String(req.query.q||"").trim();res.json({ok:true,query:q,results:searchPublicRecipes(q),note:"当前仅返回本地示例数据，未连接外部数据库。"});});
+app.use((err,_req,res,_next)=>{console.error("API error:",err?.message||err);res.status(500).json({ok:false,error:"服务器内部错误"});});
+app.listen(PORT,"0.0.0.0",()=>console.log(`coffee-recipe-cloud listening on ${PORT}`));
